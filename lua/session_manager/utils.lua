@@ -77,11 +77,14 @@ function utils.load_session(filename, discard_current)
     end
     vim.api.nvim_buf_delete(current_buffer, { force = true })
 
+    local swapfile = vim.o.swapfile
+    vim.o.swapfile = false
     utils.is_session = true
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPre' })
     vim.api.nvim_command('silent! source ' .. filename)
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPost' })
     close_unused_lsp_clients()
+    vim.o.swapfile = swapfile
   end)
 end
 
@@ -123,9 +126,18 @@ function utils.get_sessions()
   end
   table.sort(sessions, function(a, b) return a.timestamp > b.timestamp end)
 
-  -- If the last session is the current one, then preselect the previous one.
-  if #sessions >= 2 and sessions[1].filename == config.dir_to_session_filename().filename then
-    sessions[1], sessions[2] = sessions[2], sessions[1]
+  -- If we are in a session already, don't list the current session.
+  if utils.is_session then
+    local cwd = vim.loop.cwd()
+    local is_current_session = cwd and config.dir_to_session_filename(cwd).filename == sessions[1].filename
+    if is_current_session then
+      table.remove(sessions, 1)
+    end
+  end
+
+  -- If no sessions to list, send a notification.
+  if #sessions == 0 then
+    vim.notify('The only available session is your current session. Nothing to select from.', vim.log.levels.INFO)
   end
 
   return sessions
